@@ -9,7 +9,7 @@ multiplier path. It does **not** use the CV-X-IF coprocessor datapath
 used by later accelerator versions.
 
 All line numbers in the implementation section refer directly to the
-files delivered in `cleaned_code/`.
+files delivered in `cva6_mac8ex_a1`.
 
 ------------------------------------------------------------------------
 
