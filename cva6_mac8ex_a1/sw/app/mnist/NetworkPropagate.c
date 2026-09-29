@@ -13,14 +13,14 @@
 static DATA_T mem[MEMORY_SIZE];
 
 static int max(int lhs, int rhs) {
-        return (lhs >= rhs)?lhs:rhs;
-    }
+    return (lhs >= rhs) ? lhs : rhs;
+}
 
 static int clamp(int v, int lo, int hi) {
-    if(v < lo) {
+    if (v < lo) {
         return lo;
     }
-    else if(v > hi) {
+    else if (v > hi) {
         return hi;
     }
     else {
@@ -28,7 +28,7 @@ static int clamp(int v, int lo, int hi) {
     }
 }
 
-static void macsOnRange_with_mac4(const UDATA_T* __restrict inputs,
+static void macsOnRange_mac8ex_contiguous(const UDATA_T* __restrict inputs,
                         const WDATA_T* __restrict weights,
                         SUM_T* __restrict weightedSum,
                         int nb_iterations)
@@ -39,8 +39,6 @@ static void macsOnRange_with_mac4(const UDATA_T* __restrict inputs,
     for (; iter <= nb_iterations - 8; iter += 8) {
         const UDATA_T *p_in = inputs + iter;
         const UDATA_T *p_wt = weights + iter;
-        // const UDATA_T *p_in_low = inputs + iter - 4;
-        // const UDATA_T *p_wt_low = weights + iter - 4;
         
         asm volatile(
         "lw t3, 0(%[p_in]) \n\t"
@@ -60,10 +58,10 @@ static void macsOnRange_with_mac4(const UDATA_T* __restrict inputs,
             sum += inputs[iter] * weights[iter];
         }
 
-     *weightedSum = sum;
+    *weightedSum = sum;
 }
 
-static void macsOnRange_no_alined(const UDATA_T* __restrict inputs,
+static void macsOnRange_mac8ex_strided_two_rows(const UDATA_T* __restrict inputs,
                         const WDATA_T* __restrict weights,
                         SUM_T* __restrict weightedSum,
                         int nb_iterations)
@@ -108,7 +106,7 @@ static void macsOnRange_no_alined(const UDATA_T* __restrict inputs,
             sum += inputs[iter] * weights[iter];
         }
 
-     *weightedSum = sum;
+    *weightedSum = sum;
 }
 
 static void macsOnRange(const UDATA_T* __restrict inputs,
@@ -130,13 +128,13 @@ static UDATA_T sat(SUM_T weightedSum, int output,
                                            /* const Rescaling_T& __restrict rescaling */
                                            int shift)
 {
-    switch(func) {
+    switch (func) {
         case Linear:
         case Saturation: {
             break;
         }
         case Rectifier: {
-            if(weightedSum <= 0) weightedSum = 0;
+            if (weightedSum <= 0) weightedSum = 0;
             break;
         }
         default:
@@ -144,7 +142,7 @@ static UDATA_T sat(SUM_T weightedSum, int output,
             break;
     }
 
-    return saturate(weightedSum>>shift, NB_BITS);
+    return saturate(weightedSum >> shift, NB_BITS);
 }
 
 static void convcellPropagate1(
@@ -189,8 +187,8 @@ static void convcellPropagate1(
         const int iy = (oy * STRIDE_Y) - PADDING_Y; 
 
         for (int ox = 0; ox < OUTPUTS_WIDTH; ++ox) {
-            for (int output = 0; output < NB_OUTPUTS; ++output) { //accoding to the number of output to define the loop number
-                // moved to inner loop for collapsing -->
+            for (int output = 0; output < NB_OUTPUTS; ++output) { // Iterate over output channels.
+                // Compute the valid horizontal kernel range for this output position.
                 const int sxMin = (PADDING_X == 0) ? 0 //syMin is always 0, because there is no padding here
                     : max(PADDING_X - (ox * STRIDE_X), 0);
                 const int sxMax = (PADDING_X == 0 //sxMax is always KERNEL_HEIGHT, because CHANNELS_WIDTH + PADDING_X - (ox * STRIDE_Y) >= KERNEL_WIDTH
@@ -208,11 +206,11 @@ static void convcellPropagate1(
                                 - OUTPUT_MEM_CONT_SIZE;
                 }
                 // when the oOffset surpasses the size of OUTPUT_MEM_CONT_SIZE and there is wapping memory, adjust oOffset into wapping memory
-                // <--
+                
 
-                SUM_T weightedSum = biasses[output]; // add biasses of kernel firstly
+                SUM_T weightedSum = biasses[output]; // Initialize the accumulator with the output-channel bias.
 
-                for (int sy = 0; sy <= KERNEL_HEIGHT - 2; sy += 2) { //in the kernel, start by line
+                for (int sy = 0; sy <= KERNEL_HEIGHT - 2; sy += 2) { // Process two kernel rows per iteration.
                     if ((PADDING_Y != 0
                             || OUTPUTS_HEIGHT != OUTPUTS_HEIGHT_NOPAD)
                         && sy >= syMax - syMin)
@@ -255,11 +253,11 @@ static void convcellPropagate1(
                                 || sxMax - sxMin == KERNEL_WIDTH)))                  // or there is padding but the kernel is not cut by the padding (the kernel is whole)
                                                                                      // to make sure the kernel in x is valid, we can use fonction direcetly
                     {
-                        macsOnRange_no_alined(
+                        macsOnRange_mac8ex_strided_two_rows(
                             inputs + iOffset, 
                             weights + wOffset, 
                             &weightedSum,
-                            KERNEL_WIDTH * NB_CHANNELS * 2); //macs on a whole line of kernel, which is 2 times of NB_CHANNELS, because we unroll 2 times in y direction
+                            KERNEL_WIDTH * NB_CHANNELS * 2); // Process two kernel rows with the MAC8EX helper.
                     }
                     else {
                         for (int sx = 0; sx < KERNEL_WIDTH; ++sx) {
@@ -342,7 +340,7 @@ static void convcellPropagate2(
 
         for (int ox = 0; ox < OUTPUTS_WIDTH; ++ox) {
             for (int output = 0; output < NB_OUTPUTS; ++output) {
-                // moved to inner loop for collapsing -->
+                // Compute the valid horizontal kernel range for this output position.
                 const int sxMin = (PADDING_X == 0) ? 0
                     : max(PADDING_X - (ox * STRIDE_X), 0);
                 const int sxMax = (PADDING_X == 0
@@ -359,7 +357,7 @@ static void convcellPropagate2(
                     oOffset += OUTPUT_MEM_WRAP_OFFSET - OUTPUT_MEM_CONT_OFFSET
                                 - OUTPUT_MEM_CONT_SIZE;
                 }
-                // <--
+                
 
                 SUM_T weightedSum = biasses[output];
 
@@ -401,7 +399,7 @@ static void convcellPropagate2(
                             && OUTPUTS_WIDTH == OUTPUTS_WIDTH_NOPAD)
                                 || sxMax - sxMin == KERNEL_WIDTH)))
                     {
-                        macsOnRange_with_mac4(
+                        macsOnRange_mac8ex_contiguous(
                             inputs + iOffset, 
                             weights + wOffset, 
                             &weightedSum,KERNEL_WIDTH * NB_CHANNELS);
@@ -467,9 +465,6 @@ static void fccellPropagateUDATA_T(
     int OUTPUT_MEM_WRAP_SIZE,
     int OUTPUT_MEM_STRIDE)
 {
-    // static_assert(OUTPUTS_HEIGHT == 1, "Outputs height should be 1");
-    // static_assert(OUTPUTS_WIDTH == 1, "Outputs width should be 1");
-    // static_assert(OUTPUT_MEM_WRAP_SIZE == 0, "Output wrapping not supported");
 
     for (int och = 0; och < NB_OUTPUTS; och++) {
         SUM_T weightedSum = biasses[och];
@@ -498,7 +493,7 @@ static void fccellPropagateUDATA_T(
                                     * (iy + CHANNELS_HEIGHT * och);
 
             if (!wrapInRange && INPUT_MEM_STRIDE == NB_CHANNELS) {
-                macsOnRange_with_mac4(
+                macsOnRange_mac8ex_contiguous(
                     inputs + iOffset, 
                     weights + wOffset, 
                     &weightedSum, NB_CHANNELS * CHANNELS_WIDTH);
@@ -551,9 +546,6 @@ static void fccellPropagateDATA_T(
     int OUTPUT_MEM_WRAP_SIZE,
     int OUTPUT_MEM_STRIDE)
 {
-    // static_assert(OUTPUTS_HEIGHT == 1, "Outputs height should be 1");
-    // static_assert(OUTPUTS_WIDTH == 1, "Outputs width should be 1");
-    // static_assert(OUTPUT_MEM_WRAP_SIZE == 0, "Output wrapping not supported");
 
     for (int och = 0; och < NB_OUTPUTS; och++) {
         SUM_T weightedSum = biasses[och];
@@ -676,8 +668,6 @@ void propagate(const UDATA_T* inputs, Target_T* outputs, UDATA_T* maxPropagate_v
     CONV1_KERNEL_WIDTH, CONV1_ACTIVATION, ENV_MEM_CONT_OFFSET, ENV_MEM_CONT_SIZE, ENV_MEM_WRAP_OFFSET, 
     ENV_MEM_WRAP_SIZE, ENV_MEM_STRIDE, CONV1_MEM_CONT_OFFSET, CONV1_MEM_CONT_SIZE, CONV1_MEM_WRAP_OFFSET, CONV1_MEM_WRAP_SIZE, CONV1_MEM_STRIDE);
 
-    //convcellPropagate1(inputs , conv1_output, conv1_biases, conv1_weights, CONV1_SCALING);
-
 #ifdef BENCHMARK
     const Tick_T end_conv1 = tick();
     static RunningMean_T conv1_timing = {0.0, 0};
@@ -689,8 +679,6 @@ void propagate(const UDATA_T* inputs, Target_T* outputs, UDATA_T* maxPropagate_v
     saveOutputs(CONV1_NB_OUTPUTS, CONV1_OUTPUTS_HEIGHT, CONV1_OUTPUTS_WIDTH, CONV1_MEM_CONT_OFFSET, CONV1_MEM_CONT_SIZE, CONV1_MEM_WRAP_OFFSET, CONV1_MEM_WRAP_SIZE, CONV1_MEM_STRIDE, conv1_output , conv1_stream, Network::Format::CHW);
     fclose(conv1_stream);
 #endif
-
-
 
 
     // conv2
@@ -709,8 +697,6 @@ void propagate(const UDATA_T* inputs, Target_T* outputs, UDATA_T* maxPropagate_v
     CONV1_MEM_STRIDE, CONV2_MEM_CONT_OFFSET, CONV2_MEM_CONT_SIZE, CONV2_MEM_WRAP_OFFSET, 
     CONV2_MEM_WRAP_SIZE, CONV2_MEM_STRIDE);
 
-    //convcellPropagate2(conv1_output , conv2_output, conv2_biases, conv2_weights, CONV2_SCALING);
-
 #ifdef BENCHMARK
     const Tick_T end_conv2 = tick();
     static RunningMean_T conv2_timing = {0.0, 0};
@@ -722,8 +708,6 @@ void propagate(const UDATA_T* inputs, Target_T* outputs, UDATA_T* maxPropagate_v
     saveOutputs(CONV2_NB_OUTPUTS, CONV2_OUTPUTS_HEIGHT, CONV2_OUTPUTS_WIDTH, CONV2_MEM_CONT_OFFSET, CONV2_MEM_CONT_SIZE, CONV2_MEM_WRAP_OFFSET, CONV2_MEM_WRAP_SIZE, CONV2_MEM_STRIDE, conv2_output , conv2_stream, Network::Format::CHW);
     fclose(conv2_stream);
 #endif
-
-
 
 
     // fc1
@@ -755,8 +739,6 @@ void propagate(const UDATA_T* inputs, Target_T* outputs, UDATA_T* maxPropagate_v
 #endif
 
 
-
-
     // fc2
     DATA_T* fc2_output = (DATA_T*) mem + FC2_MEM_CONT_OFFSET;
 
@@ -785,6 +767,12 @@ void propagate(const UDATA_T* inputs, Target_T* outputs, UDATA_T* maxPropagate_v
     saveOutputs(FC2_NB_OUTPUTS, FC2_OUTPUTS_HEIGHT, FC2_OUTPUTS_WIDTH, FC2_MEM_CONT_OFFSET, FC2_MEM_CONT_SIZE, FC2_MEM_WRAP_OFFSET, FC2_MEM_WRAP_SIZE, FC2_MEM_STRIDE, fc2_output , fc2_stream, Network::Format::CHW);
     fclose(fc2_stream);
 #endif
+//modifcation debug
+    // printf("fc2_output = ");
+    // for (int i = 0; i < 10; i++) {
+    //     printf("%d ", fc2_output[i]);
+    // }
+    // printf("\n");
     maxPropagate1(fc2_output, outputs, maxPropagate_val, FC2_NB_OUTPUTS, FC2_OUTPUTS_HEIGHT, FC2_OUTPUTS_WIDTH, FC2_MEM_CONT_OFFSET, FC2_MEM_CONT_SIZE, FC2_MEM_WRAP_OFFSET, FC2_MEM_WRAP_SIZE, FC2_MEM_STRIDE);
 
 #ifdef SAVE_OUTPUTS
@@ -794,15 +782,4 @@ void propagate(const UDATA_T* inputs, Target_T* outputs, UDATA_T* maxPropagate_v
 #endif
 
 }
-
-/*template<>
-float Network::backpropagate(const DATA_T* input, const std::int32_t* labels){
-   const float loss = 0.0f;
-   return loss;
- }
-
-int Network::gradientCheck(){
-   return(0);
-}*/
-
 
