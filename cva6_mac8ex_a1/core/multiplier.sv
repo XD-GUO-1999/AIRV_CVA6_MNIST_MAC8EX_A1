@@ -27,11 +27,10 @@ module multiplier
     input  fu_op                             operation_i,
     input  riscv::xlen_t                     operand_a_i,
     input  riscv::xlen_t                     operand_b_i,
-    input  riscv::xlen_t                     operand_c_i, //modification
-    //add rs4 and rs5 for mac8
+    input  riscv::xlen_t                     operand_c_i,
+    // Additional packed operands for the second group of four MACs.
     input  riscv::xlen_t                     operand_d_i,
     input  riscv::xlen_t                     operand_e_i,
-    ////
     output riscv::xlen_t                     result_o,
     output logic                             mult_valid_o,
     output logic                             mult_ready_o,
@@ -77,28 +76,9 @@ module multiplier
   fu_op operator_d, operator_q;
   logic [riscv::XLEN*2-1:0] mult_result_d, mult_result_q;
 
-  //modification the logic calculate of MAC8IM
+  // MAC8EX eight-lane INT8 multiply-accumulate result.
   logic [31:0] mac8ex_res_d, mac8ex_res_q;
 
-//modification to debug
-  // always @(posedge clk_i) begin
-  //   if (mult_valid_i && (operation_i == ariane_pkg::MAC8IM)) begin
-  //     $display("DEBUG MAC8: A=%h, B=%h, D=%h, E=%h, C(acc)=%d", 
-  //               operand_a_i, operand_b_i, operand_d_i, operand_e_i, $signed(operand_c_i));
-  //     $display("DEBUG MAC8: Calc steps: ");
-  //     $display("  %d*%d + %d*%d + %d*%d + %d*%d + %d*%d + %d*%d + %d*%d + %d*%d + %d",
-  //              $signed(operand_a_i[7:0]), $signed(operand_b_i[7:0]),
-  //              $signed(operand_a_i[15:8]), $signed(operand_b_i[15:8]),
-  //              $signed(operand_a_i[23:16]), $signed(operand_b_i[23:16]),
-  //              $signed(operand_a_i[31:24]), $signed(operand_b_i[31:24]),
-  //              $signed(operand_d_i[7:0]), $signed(operand_e_i[7:0]),
-  //              $signed(operand_d_i[15:8]), $signed(operand_e_i[15:8]),
-  //              $signed(operand_d_i[23:16]), $signed(operand_e_i[23:16]),
-  //              $signed(operand_d_i[31:24]), $signed(operand_e_i[31:24]),
-  //              $signed(operand_c_i));
-  //   end
-  // end
-  //modification 
   assign mac8ex_res_d = ($signed({1'b0, operand_a_i[7:0]})*$signed(operand_b_i[7:0])) + 
                         ($signed({1'b0, operand_a_i[15:8]})*$signed(operand_b_i[15:8])) + 
                         ($signed({1'b0, operand_a_i[23:16]})*$signed(operand_b_i[23:16])) + 
@@ -151,9 +131,9 @@ module multiplier
   assign operator_d = operation_i;
 
   always_comb begin : p_selmux
-    result_o = '0; //modification: default value of result
+    result_o = '0;
     unique case (operator_q)
-      ariane_pkg::MAC8EX:    result_o = mac8ex_res_q; //modification: output of mac8im
+      ariane_pkg::MAC8EX:   result_o = mac8ex_res_q;
       MULH, MULHU, MULHSU: result_o = mult_result_q[riscv::XLEN*2-1:riscv::XLEN];
       MULW:                result_o = sext32(mult_result_q[31:0]);
       CLMUL:               result_o = clmul_q;
@@ -183,7 +163,7 @@ module multiplier
       trans_id_q    <= '0;
       operator_q    <= MUL;
       mult_result_q <= '0;
-      mac8ex_res_q <= '0;//modification
+      mac8ex_res_q   <= '0;
     end else begin
       // Input silencing
       trans_id_q    <= trans_id_i;
@@ -191,7 +171,7 @@ module multiplier
       mult_valid_q  <= mult_valid;
       operator_q    <= operator_d;
       mult_result_q <= mult_result_d;
-      mac8ex_res_q <= mac8ex_res_d;//modification
+      mac8ex_res_q   <= mac8ex_res_d;
     end
   end
 endmodule

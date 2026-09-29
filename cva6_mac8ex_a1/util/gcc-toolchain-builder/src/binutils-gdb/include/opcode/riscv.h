@@ -106,9 +106,8 @@ static inline unsigned int riscv_insn_length (insn_t insn)
   (RV_X(x, 20, 10))
 #define EXTRACT_RVV_VC_IMM(x) \
   (RV_X(x, 20, 11))
-  ////modification
-//modification for mac8ex, we need to extract the custom registers from the instruction encoding, which are in different positions than the normal registers. 
-//We will use the same encoding as normal registers, but with different bits.
+  /* MAC8EX custom register extraction and encoding helpers.  */
+  /* W1..W4 use 5-bit GPR indices in custom instruction fields. */
 #define EXTRACT_MAC8_RS1(x) \
   (((x) >> 12) & 0x1f)
 #define EXTRACT_MAC8_RS2(x) \
@@ -127,7 +126,6 @@ static inline unsigned int riscv_insn_length (insn_t insn)
   (((x) & 0x1f) << 22)
 #define ENCODE_MAC8_RS4(x)  \
   (((x) & 0x1f) << 27)
-////
 
 #define ENCODE_ITYPE_IMM(x) \
   (RV_X(x, 0, 12) << 20)
@@ -237,19 +235,6 @@ static inline unsigned int riscv_insn_length (insn_t insn)
 #define RISCV_BRANCH_REACH (RISCV_IMM_REACH * RISCV_BRANCH_ALIGN)
 
 /* RV fields.  */
-// //modification
-// #define OP_MASK_MAC8EX_A     0x1f
-// #define OP_SH_MAC8EX_A       12
-
-// #define OP_MASK_MAC8EX_B     0x1f
-// #define OP_SH_MAC8EX_B       17
-
-// #define OP_MASK_MAC8EX_C     0x1f
-// #define OP_SH_MAC8EX_C       22
-
-// #define OP_MASK_MAC8EX_D     0x1f
-// #define OP_SH_MAC8EX_D       27
-// /////
 #define OP_MASK_OP		0x7f
 #define OP_SH_OP		0
 #define OP_MASK_RS2		0x1f

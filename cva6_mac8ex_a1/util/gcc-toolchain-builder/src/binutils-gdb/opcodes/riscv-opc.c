@@ -319,9 +319,8 @@ const struct riscv_opcode riscv_opcodes[] =
 {"pause",       0, INSN_CLASS_ZIHINTPAUSE, "", MATCH_PAUSE, MASK_PAUSE, match_opcode, 0 },
 
 /* Basic RVI instructions and aliases.  */
-//modification
-{"mac8ex",        0, INSN_CLASS_I, "d,W1,W2,W3,W4",     MATCH_MAC8EX, MASK_MAC8EX, match_opcode, 0 }, 
-//modification
+/* AIRV MAC8EX custom instruction.  */
+{"mac8ex",        0, INSN_CLASS_I, "d,W1,W2,W3,W4",     MATCH_MAC8EX, MASK_MAC8EX, match_opcode, 0 },
 {"unimp",       0, INSN_CLASS_C, "",          0, 0xffffU, match_opcode, INSN_ALIAS },
 {"unimp",       0, INSN_CLASS_I, "",          MATCH_CSRRW|(CSR_CYCLE << OP_SH_CSR), 0xffffffffU,  match_opcode, 0 }, /* csrw cycle, x0  */
 {"ebreak",      0, INSN_CLASS_C, "",          MATCH_C_EBREAK, MASK_C_EBREAK, match_opcode, INSN_ALIAS },

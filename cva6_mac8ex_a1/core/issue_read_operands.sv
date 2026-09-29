@@ -40,7 +40,6 @@ module issue_read_operands
     output logic [REG_ADDR_SIZE-1:0] rs3_o,
     input rs3_len_t rs3_i,
     input logic rs3_valid_i,
-    //modification
     output logic [REG_ADDR_SIZE-1:0] rs4_o,
     input riscv::xlen_t rs4_i,
     input logic rs4_valid_i,
@@ -94,13 +93,13 @@ module issue_read_operands
   logic stall;
   logic fu_busy;  // functional unit is busy
   riscv::xlen_t operand_a_regfile, operand_b_regfile;  // operands coming from regfile
-  //modification :
   riscv::xlen_t operand_d_regfile, operand_e_regfile;
   //
   rs3_len_t operand_c_regfile, operand_c_fpr, operand_c_gpr;  // third operand from fp regfile or gp regfile if NR_RGPR_PORTS == 3
   // output flipflop (ID <-> EX)
   riscv::xlen_t operand_a_n, operand_a_q, operand_b_n, operand_b_q, imm_n, imm_q, imm_forward_rs3;
-  riscv::xlen_t operand_d_n, operand_d_q, operand_e_n, operand_e_q; //modification
+  // Extra source operands used by MAC8EX.
+  riscv::xlen_t operand_d_n, operand_d_q, operand_e_n, operand_e_q;
 
   logic        alu_valid_q;
   logic        mult_valid_q;
@@ -119,7 +118,6 @@ module issue_read_operands
 
   // forwarding signals
   logic forward_rs1, forward_rs2, forward_rs3;
-  //modification : 
   logic forward_rs4, forward_rs5;
 
   // original instruction stored in tval
@@ -133,7 +131,6 @@ module issue_read_operands
 
   assign fu_data_o.operand_a = operand_a_q;
   assign fu_data_o.operand_b = operand_b_q;
-  //modification : con
   assign fu_data_o.operand_d = operand_d_q;
   assign fu_data_o.operand_e = operand_e_q;
   //
@@ -183,20 +180,19 @@ module issue_read_operands
     forward_rs1 = 1'b0;
     forward_rs2 = 1'b0;
     forward_rs3 = 1'b0;  // FPR only
-    //modification
     forward_rs4 = 1'b0;  
     forward_rs5 = 1'b0;  
     //
     // poll the scoreboard for those values
     rs1_o = issue_instr_i.rs1;
     rs2_o = issue_instr_i.rs2;
-    //modification: use the rd as 3rd regisiter if we use mac8
+    // MAC8EX reads rd as the accumulator source.
     rs3_o = (issue_instr_i.op == ariane_pkg::MAC8EX) ? issue_instr_i.rd[REG_ADDR_SIZE-1:0] : issue_instr_i.result[REG_ADDR_SIZE-1:0]; 
     if (issue_instr_i.op == ariane_pkg::MAC8EX) begin
       rs1_o = issue_instr_i.rs1;  // Port 1: rs1
       rs2_o = issue_instr_i.rs2;  // Port 2: rs2
-      rs4_o = issue_instr_i.result[4:0]; //modification: 
-      rs5_o = issue_instr_i.result[9:5];  //modification: 
+      rs4_o = issue_instr_i.result[4:0];
+      rs5_o = issue_instr_i.result[9:5];
     end else begin
       rs4_o = '0;
       rs5_o = '0;
@@ -242,10 +238,9 @@ module issue_read_operands
     if ((CVA6Cfg.FpPresent && is_imm_fpr(
             issue_instr_i.op
         )) ? rd_clobber_fpr_i[issue_instr_i.result[REG_ADDR_SIZE-1:0]] != NONE :
-        //modification
-            (issue_instr_i.op == OFFLOAD || issue_instr_i.op == ariane_pkg::MAC8EX) && CVA6Cfg.NrRgprPorts == 5 ?
+                (issue_instr_i.op == OFFLOAD || issue_instr_i.op == ariane_pkg::MAC8EX) && CVA6Cfg.NrRgprPorts == 5 ?
             rd_clobber_gpr_i[(issue_instr_i.op == ariane_pkg::MAC8EX) ? issue_instr_i.rd[REG_ADDR_SIZE-1:0] : issue_instr_i.result[REG_ADDR_SIZE-1:0]] != NONE : 0) begin
-        //modofication : when we use MAC8 and offload, judge rs3 is avaliable or not
+        // Stall if the accumulator source is not yet available.
       // if the operand is available, forward it. CSRs don't write to/from FPR so no need to check
       if (rs3_valid_i) begin
         forward_rs3 = 1'b1;
@@ -253,7 +248,6 @@ module issue_read_operands
         stall = 1'b1;
       end
     end
-        //modification: 
     if (issue_instr_i.op == ariane_pkg::MAC8EX)begin
       if(rd_clobber_gpr_i[rs4_o] != NONE)begin
           if(rs4_valid_i) forward_rs4 = 1'b1;
@@ -267,7 +261,7 @@ module issue_read_operands
   end
 
   // third operand from fp regfile or gp regfile if NR_RGPR_PORTS == 5
-  if (CVA6Cfg.NrRgprPorts == 5) begin : gen_gp_rs3 //modification 3 -> 5
+  if (CVA6Cfg.NrRgprPorts == 5) begin : gen_gp_rs3
       assign imm_forward_rs3 = rs3_i;
   end else begin : gen_fp_rs3
       assign imm_forward_rs3 = {{riscv::XLEN-CVA6Cfg.FLen{1'b0}}, rs3_i};
@@ -278,15 +272,14 @@ module issue_read_operands
     // default is regfiles (gpr or fpr)
     operand_a_n = operand_a_regfile;
     operand_b_n = operand_b_regfile;
-    //modification 
     operand_d_n = operand_d_regfile;
     operand_e_n = operand_e_regfile;
     // immediates are the third operands in the store case
     // for FP operations, the imm field can also be the third operand from the regfile
-    if (CVA6Cfg.NrRgprPorts == 5) begin//modification 3 -> 5
+    if (CVA6Cfg.NrRgprPorts == 5) begin
       imm_n = (CVA6Cfg.FpPresent && is_imm_fpr(issue_instr_i.op)) ?
           {{riscv::XLEN - CVA6Cfg.FLen{1'b0}}, operand_c_regfile} :
-          (issue_instr_i.op == OFFLOAD || issue_instr_i.op == ariane_pkg::MAC8EX) ? operand_c_regfile : issue_instr_i.result; //modification : ajout MAC8EX
+          (issue_instr_i.op == OFFLOAD || issue_instr_i.op == ariane_pkg::MAC8EX) ? operand_c_regfile : issue_instr_i.result;
     end else begin
       imm_n = (CVA6Cfg.FpPresent && is_imm_fpr(issue_instr_i.op)) ?
           {{riscv::XLEN - CVA6Cfg.FLen{1'b0}}, operand_c_regfile} : issue_instr_i.result;
@@ -306,11 +299,9 @@ module issue_read_operands
     if (forward_rs3) begin
       imm_n = imm_forward_rs3;
     end
-//modification
     if (forward_rs4) begin
       operand_d_n = rs4_i;
     end
-//modification
     if (forward_rs5) begin
       operand_e_n = rs5_i;
     end
@@ -493,16 +484,17 @@ module issue_read_operands
   logic [CVA6Cfg.NrCommitPorts-1:0][riscv::XLEN-1:0] wdata_pack;
   logic [CVA6Cfg.NrCommitPorts-1:0]                  we_pack;
 
-  if (CVA6Cfg.NrRgprPorts == 5) begin : gen_rs3 //modification
-  assign raddr_pack = {
-        (issue_instr_i.op == ariane_pkg::MAC8EX) ? issue_instr_i.result[9:5] : 5'd0, // modification: if we use MAC8, the 4th and 5th port will read x28 and x29 as rs4 and rs5, otherwise they read x0
-        (issue_instr_i.op == ariane_pkg::MAC8EX) ? issue_instr_i.result[4:0] : 5'd0, // important; here we apply as rs5 rs4 rs3 rs2 rs1, the order is important
+  if (CVA6Cfg.NrRgprPorts == 5) begin : gen_rs3
+    // Read order is {extra2, extra1, rd/acc, rs2, rs1}.
+    assign raddr_pack = {
+        (issue_instr_i.op == ariane_pkg::MAC8EX) ? issue_instr_i.result[9:5] : 5'd0,
+        (issue_instr_i.op == ariane_pkg::MAC8EX) ? issue_instr_i.result[4:0] : 5'd0,
         (issue_instr_i.op == ariane_pkg::MAC8EX) ? issue_instr_i.rd[4:0] : issue_instr_i.result[4:0], // Port 3: rd/acc
         issue_instr_i.rs2[4:0], // Port 2: rs2
         issue_instr_i.rs1[4:0]  // Port 1: rs1
   };
   end else if (CVA6Cfg.NrRgprPorts == 3) begin : gen_rs3
-    assign raddr_pack = (issue_instr_i.op == ariane_pkg::MAC8EX) ? //modification if we use MAC8, the 3rd port should read rd to load rs3
+    assign raddr_pack = (issue_instr_i.op == ariane_pkg::MAC8EX) ?
                         {issue_instr_i.rd[4:0], issue_instr_i.rs2[4:0], issue_instr_i.rs1[4:0]} :
                         {issue_instr_i.result[4:0], issue_instr_i.rs2[4:0], issue_instr_i.rs1[4:0]};
   end else begin : gen_no_rs3
@@ -613,8 +605,8 @@ module issue_read_operands
       issue_instr_i.op
   )) ? {{riscv::XLEN - CVA6Cfg.FLen{1'b0}}, fprdata[1]} : rdata[1];
   assign operand_c_regfile = (CVA6Cfg.NrRgprPorts == 5) ? ((CVA6Cfg.FpPresent && is_imm_fpr(issue_instr_i.op)) ? operand_c_fpr : operand_c_gpr) : operand_c_fpr;
-//modification :fpr or gpr, here we use gpr as the 3rd operand for MAC8EX, so we need to check if it is MAC8EX or not
-  assign operand_d_regfile = (CVA6Cfg.NrRgprPorts == 5) ? rdata[3] : 0; //to connect rdata[3] for MAC8EX, which is rs4, to operand_d_regfile
+  // Map the fourth and fifth GPR read ports to the extra MAC8EX operands.
+  assign operand_d_regfile = (CVA6Cfg.NrRgprPorts == 5) ? rdata[3] : 0;
   assign operand_e_regfile = (CVA6Cfg.NrRgprPorts == 5) ? rdata[4] : 0;
 
 
@@ -625,7 +617,6 @@ module issue_read_operands
     if (!rst_ni) begin
       operand_a_q           <= '{default: 0};
       operand_b_q           <= '{default: 0};
-      //modification
       operand_d_q           <= '{default: 0};
       operand_e_q           <= '{default: 0};
 
@@ -639,7 +630,6 @@ module issue_read_operands
     end else begin
       operand_a_q           <= operand_a_n;
       operand_b_q           <= operand_b_n;
-      //modification : send
       operand_d_q           <= operand_d_n;
       operand_e_q           <= operand_e_n;
 
@@ -655,7 +645,7 @@ module issue_read_operands
 
   //pragma translate_off
   initial begin
-    assert (CVA6Cfg.NrRgprPorts == 2 || CVA6Cfg.NrRgprPorts == 3 || CVA6Cfg.NrRgprPorts == 5) //&& CVA6Cfg.CvxifEn)) //modification
+    assert (CVA6Cfg.NrRgprPorts == 2 || CVA6Cfg.NrRgprPorts == 3 || CVA6Cfg.NrRgprPorts == 5)
     else
       $fatal(
           1,

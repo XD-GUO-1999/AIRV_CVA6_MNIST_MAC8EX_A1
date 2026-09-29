@@ -1186,19 +1186,16 @@ module decoder
           instruction_o.fu      = ALU;
           instruction_o.rd[4:0] = instr.utype.rd;
         end
-// ↓↓↓ Modification ↓↓↓
-        // Custom instruction DOT8 (Opcode: 0001011)
+        // MAC8EX custom instruction (custom-0 opcode).
         7'b0001011: begin 
-          imm_select             = RS3;             //use RS3 to fetch the accumulator
-          instruction_o.fu       = MULT;            // Dispatch the task to the Multiplier unit
-          instruction_o.rs1[4:0] = instruction_i[16:12]; // Extract source register 1 (t1)
-          instruction_o.rs2[4:0] = instruction_i[21:17]; // Extract source register 2 (t2)
-          instruction_o.rd[4:0]  = instr.rtype.rd;  // Extract destination register (sum)
-          instruction_o.op = ariane_pkg::MAC8EX;  // Attach the DOT8 label we registered in ariane_pkg
-          //instruction_o.result = {54'b0, instruction_i[31:27], instruction_i[26:22]}; // Pass the 5-bit immediate (which contains the shift amount) in the upper bits of the result field, zero-extend to 64 bits
+          imm_select             = RS3;  // RS3 path carries the accumulator and extra register indices.
+          instruction_o.fu       = MULT;
+          instruction_o.rs1[4:0] = instruction_i[16:12];
+          instruction_o.rs2[4:0] = instruction_i[21:17];
+          instruction_o.rd[4:0]  = instr.rtype.rd;  // Accumulator source and destination.
+          instruction_o.op       = ariane_pkg::MAC8EX;
           end
         
-        // ↑↑↑ Modification ↑↑↑
         default: illegal_instr = 1'b1;
       endcase
     end
@@ -1278,10 +1275,10 @@ module decoder
         instruction_o.result  = imm_uj_type;
         instruction_o.use_imm = 1'b1;
       end
-      RS3: begin //modification: for instructions that use rs3 as an immediate (e.g., MAC8), 
-      //pass the value in the result field and set use_imm to 1 so the execution unit knows to use it as an immediate rather than a register value
+      RS3: begin
+        // MAC8EX reuses result[9:0] to carry two extra 5-bit GPR indices.
         if (instruction_o.op == ariane_pkg::MAC8EX) begin
-          instruction_o.result  = {{riscv::XLEN - 10{1'b0}}, instruction_i[31:27], instruction_i[26:22]}; // result holds the 10-bit immediate for MAC8EX
+          instruction_o.result = {{riscv::XLEN - 10{1'b0}}, instruction_i[31:27], instruction_i[26:22]};
         end else begin
         // result holds address of fp operand rs3
         instruction_o.result  = {{riscv::XLEN - 5{1'b0}}, instr.r4type.rs3};

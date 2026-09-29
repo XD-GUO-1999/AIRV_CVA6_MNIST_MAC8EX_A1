@@ -97,7 +97,8 @@ module issue_stage
   // ---------------------------------------------------
   // Scoreboard (SB) <-> Issue and Read Operands (IRO)
   // ---------------------------------------------------
-  typedef logic [(CVA6Cfg.NrRgprPorts == 5 ? riscv::XLEN : CVA6Cfg.FLen)-1:0] rs3_len_t; //modification 3 -> 5, it is important, if not, the size of rs3 will be 1
+  // MAC8EX uses the third GPR source as an XLEN-wide accumulator.
+  typedef logic [(CVA6Cfg.NrRgprPorts == 5 ? riscv::XLEN : CVA6Cfg.FLen)-1:0] rs3_len_t;
 
   fu_t               [2**REG_ADDR_SIZE-1:0] rd_clobber_gpr_sb_iro;
   fu_t               [2**REG_ADDR_SIZE-1:0] rd_clobber_fpr_sb_iro;
@@ -113,7 +114,7 @@ module issue_stage
   logic              [   REG_ADDR_SIZE-1:0] rs3_iro_sb;
   rs3_len_t                                 rs3_sb_iro;
   logic                                     rs3_valid_iro_sb;
-  //modification :
+  // Additional source-register channels used by MAC8EX.
   logic              [   REG_ADDR_SIZE-1:0] rs4_iro_sb;
   riscv::xlen_t                             rs4_sb_iro;
   logic                                     rs4_valid_iro_sb;
@@ -159,7 +160,7 @@ module issue_stage
       .rs3_i              (rs3_iro_sb),
       .rs3_o              (rs3_sb_iro),
       .rs3_valid_o        (rs3_valid_iro_sb),
-      //modification : 
+      // MAC8EX extra source-register scoreboard connections.
       .rs4_i              (rs4_iro_sb),
       .rs4_o              (rs4_sb_iro),
       .rs4_valid_o        (rs4_valid_iro_sb),
@@ -211,7 +212,7 @@ module issue_stage
       .rs3_o              (rs3_iro_sb),
       .rs3_i              (rs3_sb_iro),
       .rs3_valid_i        (rs3_valid_iro_sb),
-      //modification :
+      // Additional source-register channels used by MAC8EX.
       .rs4_o              (rs4_iro_sb),
       .rs4_i              (rs4_sb_iro),
       .rs4_valid_i        (rs4_valid_iro_sb),
